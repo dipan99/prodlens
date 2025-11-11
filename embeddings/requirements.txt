@@ -1,0 +1,16 @@
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-chroma
+
+# Chroma Cloud SDK
+chromadb
+
+# Document loaders and utilities
+pypdf
+python-dotenv
+
+# Optional but recommended for notebook/debug use
+tqdm
+rich
