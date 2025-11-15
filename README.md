@@ -1,3 +1,3 @@
 # prodlens
-LangGraph workflow graph
+LangGraph workflow graph    
 ![ProdLens Screenshot](files/graph.png)
