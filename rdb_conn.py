@@ -1,7 +1,9 @@
+from logger import Logging
 import psycopg2
 import os
 from dotenv import load_dotenv
 
+Logging.setLevel()
 load_dotenv()
 
 # Database configuration
@@ -15,6 +17,8 @@ db_config = {
 
 def sql_query(sql: str) -> str:
     try:
+        Logging.logDebug(f"Retrieving DB output for the query: {sql}")
+
         # Connect to database
         conn = psycopg2.connect(**db_config)
         cursor = conn.cursor()
@@ -22,7 +26,7 @@ def sql_query(sql: str) -> str:
         # Test query
         cursor.execute("SELECT version();")
         version = cursor.fetchone()
-        print(f"Connected to: {version[0]}")
+        Logging.logDebug(f"Connected to: {version[0]}")
         
         # List tables
         cursor.execute(sql)
@@ -30,10 +34,11 @@ def sql_query(sql: str) -> str:
 
         cursor.close()
         conn.close()
-
+        Logging.logDebug(f"Retrieved tables:\n{tables}\n")
         return tables        
     except Exception as e:
-        print(f"Error: {e}")
+        Logging.logError(str(e))
+        raise e
 
 
 if __name__ == "__main__":
