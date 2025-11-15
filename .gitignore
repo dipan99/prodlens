@@ -1,1 +1,90 @@
+# ===================================================================
+# Standard Python .gitignore
+#
+# Sourced from common community standards and GitHub's template
+# ===================================================================
+
+### Virtual Environments ###
+# Ignore common virtual environment directories
+venv/
+.venv/
+env/
+.env/
+virtualenv/
+ENV/
+
+### Python Cache & Compiled Files ###
+# Byte-compiled / optimized / C extensions
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+downloads/
+eggs/
+*.egg-info/
+*.egg
+wheels/
+pip-wheel-metadata/
+
+# PyInstaller
+# Usually rebuilt temporary files
+*.manifest
+*.spec
+
+### Secrets & Configuration (CRITICAL) ###
+# Never commit sensitive files
 .env
+*.env
+config.ini
+secrets.ini
+
+# Instance folder (common in Flask)
+instance/
+
+### IDE / Editor Config ###
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.sw[op]
+*~
+
+### Testing & Coverage ###
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+htmlcov/
+
+### Jupyter Notebook ###
+.ipynb_checkpoints
+
+### Logs ###
+logs/
+*.log
+*.log.*
+
+### OS-specific ###
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+.csv
