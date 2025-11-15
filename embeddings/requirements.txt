@@ -14,3 +14,8 @@ python-dotenv
 # Optional but recommended for notebook/debug use
 tqdm
 rich
+
+# For API
+fastapi
+uvicorn
+python-multipart
