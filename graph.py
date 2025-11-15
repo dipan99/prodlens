@@ -1,17 +1,23 @@
-from typing import TypedDict, Literal, Annotated
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from typing import TypedDict, Literal, List
 from nodes import text_to_sql, rag_query
+from langchain_openai import ChatOpenAI
 from rdb_conn import sql_query
 from dotenv import load_dotenv
+from logger import Logging
 import json
+import os
 
 load_dotenv()
+Logging.setLevel()
 
 class QueryState(TypedDict):
     """State for the query routing graph."""
     query: str
+    conversation_history: List[BaseMessage]
+    standalone_query: str
     route: str
     reasoning: str
     sql_result: str
@@ -20,46 +26,90 @@ class QueryState(TypedDict):
     error: str
 
 
-def router_node(state: QueryState) -> QueryState:
-    """
-    Decision node that routes queries to Text2SQL or RAG.
-    
-    Uses LLM to analyze query intent and decide routing.
-    """
-    query = state["query"]
-    
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.1,
-        model_kwargs={"response_format": {"type": "json_object"}}
-    )
-    
-    system_prompt = """You are a query routing assistant for an electronics database system.
-
-    The system has two capabilities:
-
-    1. **TEXT2SQL**: Queries structured product data (specifications, prices, ratings, comparisons)
-    - Examples: "Show me monitors under $500", "What's the best gaming mouse?", "Compare keyboards"
-    - Use when: Query needs filtering, aggregation, sorting, or comparing specific product attributes
-
-    2. **RAG**: Searches unstructured text for definitions and explanations
-    - Examples: "What is response time?", "Why is DPI important?", "Explain refresh rate"
-    - Use when: Query asks for definitions, meanings, importance, or explanations of specifications
-
-    Respond with JSON:
-    {
-        "route": "text2sql" | "rag",
-        "reasoning": "Brief explanation"
-    }
-
-    Default to TEXT2SQL if unclear."""
-
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=query)
-    ]
-    
+def get_prompt(name: str) -> str:
     try:
+        prompt_path = os.path.join("templates", f"{name}.txt")
+        system_prompt = open(prompt_path, "r").read()
+        return system_prompt
+    except Exception as e:
+        Logging.logError(str(e))
+        raise e
+
+
+def preprocessing_node(state: QueryState) -> QueryState:
+    try:
+        query = state["query"]
+        history = state.get("conversation_history", [])
+        Logging.logInfo("Executing Preprocessing Node")
+        
+        # If no history, query is already standalone
+        if not history or len(history) == 0:
+            Logging.logDebug("No history, query is already standalone")
+            return {
+                **state,
+                "standalone_query": query
+            }
+        
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)        
+        system_prompt = get_prompt(name="preprocess")
+
+        # Format conversation history
+        history_text = ""
+        for i, msg in enumerate(history[-6:]):  # Last 3 exchanges (6 messages)
+            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            history_text += f"{role}: {msg.content}\n"
+        
+        user_prompt = f"""
+        Conversation History:
+        {history_text}
+
+        Current Query: {query}
+
+        Reformulate the current query into a standalone query:
+        """
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ]
+        
+        response = llm.invoke(messages)
+        standalone_query = response.content.strip()
+        
+        Logging.logDebug(f"Original: '{query}'")
+        Logging.logDebug(f"Stndalone: '{standalone_query}'\n")
+        
+        return {
+            **state,
+            "standalone_query": standalone_query
+        }
+        
+    except Exception as e:
+        Logging.logError(str(e))
+        return {
+            **state,
+            "standalone_query": query,
+            "error": str(e)
+        }
+
+
+def router_node(state: QueryState) -> QueryState:
+    try:
+        Logging.logInfo("Executing Router Node")
+        query = state.get("standalone_query", state["query"])
+        
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.1,
+            model_kwargs={"response_format": {"type": "json_object"}}
+        )
+        
+        system_prompt = get_prompt(name="router")
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=query)
+        ]
+
         response = llm.invoke(messages)
         decision = json.loads(response.content)
         
@@ -67,8 +117,8 @@ def router_node(state: QueryState) -> QueryState:
         if route not in ["text2sql", "rag"]:
             route = "text2sql"
         
-        print(f"Router Decision: {route.upper()}")
-        print(f"Reasoning: {decision.get('reasoning', '')}\n")
+        Logging.logDebug(f"Router Decision: {route.upper()}")
+        Logging.logDebug(f"Reasoning: {decision.get('reasoning', '')}\n")
         
         return {
             **state,
@@ -77,7 +127,7 @@ def router_node(state: QueryState) -> QueryState:
         }
         
     except Exception as e:
-        print(f"Router error: {e}, defaulting to TEXT2SQL")
+        Logging.logError(str(e))
         return {
             **state,
             "route": "text2sql",
@@ -87,33 +137,31 @@ def router_node(state: QueryState) -> QueryState:
 
 
 def text2sql_node(state: QueryState) -> QueryState:
-    query = state["query"]
-    print("Executing Text2SQL Node...")
     try:
+        Logging.logInfo("Executing Text2SQL Node")
+        query = state.get("standalone_query", state["query"])
+
         sql = text_to_sql(query)
-        print(sql)
         result = sql_query(sql)
-        print(result)
         return {
             **state,
             "sql_result": sql,
             "final_answer": result
         }
     except Exception as e:
-        error_msg = f"Error in Text2SQL: {str(e)}"
-        print(f"{error_msg}")
+        Logging.logError(str(e))
         return {
             **state,
             "sql_result": "",
-            "final_answer": error_msg,
-            "error": error_msg
+            "final_answer": str(e),
+            "error": str(e)
         }
 
 
 def rag_node(state: QueryState) -> QueryState:
-    query = state["query"]
-    print("Executing RAG Node...")
     try:
+        Logging.logInfo("Executing RAG Node")
+        query = state.get("standalone_query", state["query"])
         result = rag_query(query)
         return {
             **state,
@@ -121,73 +169,54 @@ def rag_node(state: QueryState) -> QueryState:
             "final_answer": result
         }
     except Exception as e:
-        error_msg = f"Error in RAG: {str(e)}"
-        print(f"{error_msg}")
+        Logging.logError(str(e))
         return {
             **state,
-            "rag_result": "",
-            "final_answer": error_msg,
-            "error": error_msg
+            "sql_result": "",
+            "final_answer": str(e),
+            "error": str(e)
         }
 
 
 def post_process_node(state: QueryState) -> QueryState:
-    query = state["query"]
-    route = state["route"]
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.7
-    )
-    # Prepare context based on route
-    if route == "text2sql":
-        raw_output = state.get("sql_result", "")
-        system_prompt = """
-        You are a helpful assistant that presents database query results in natural language.
-
-        Your task:
-        1. Take the SQL query results and present them in a clear, conversational way
-        2. Use proper formatting (bullet points, tables if needed)
-        3. Highlight key insights from the data
-        4. Be concise but informative
-        5. If there are no results, explain that politely
-
-        Do not make up information - only use what's in the results.
-        """
-
-        user_prompt = f"""
-        Original Query: {query}
-
-        Database Results:
-        {raw_output}
-
-        Please provide a natural language response to the user's query based on these results.
-        """
-
-    else:  # route == "rag"
-        raw_output = state.get("rag_result", "")
-        system_prompt = """
-        You are a helpful assistant that explains technical concepts about electronics.
-
-        Your task:
-        1. Take the retrieved information and explain it clearly
-        2. Use examples where appropriate
-        3. Keep explanations accessible to non-experts
-        4. Maintain accuracy - don't add information beyond what's provided
-        5. Structure the response with clear paragraphs
-        6. Keep your response concise
-
-        Do not make up information - only use the retrieved context."""
-
-        user_prompt = f"""
-        Original Query: {query}
-
-        Retrieved Information:
-        {raw_output}
-
-        Please provide a clear, natural language explanation to answer the user's query.
-        """
-    
     try:
+        Logging.logInfo("Executing Post-Processing Node")
+        original_query = state["query"]
+        standalone_query = state.get("standalone_query", original_query)
+        route = state["route"]
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.7
+        )
+
+        # Prepare context based on route
+        if route == "text2sql":
+            raw_output = state.get("final_answer", "")
+            sql_result = state.get("sql_result", "")
+            system_prompt = get_prompt(name="postprocess_sql")
+
+            user_prompt = f"""
+            Original Query: {standalone_query}
+            Query Used: {sql_result}
+            Database Results:
+            {raw_output}
+
+            Please provide a natural language response to the user's query based on these results.
+            """
+
+        else:
+            raw_output = state.get("final_answer", "")
+            system_prompt = get_prompt(name="postprocess_rag")
+
+            user_prompt = f"""
+            Original Query: {standalone_query}
+
+            Retrieved Information:
+            {raw_output}
+
+            Please provide a clear, natural language explanation to answer the user's query.
+            """
+    
         messages = [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt)
@@ -196,23 +225,38 @@ def post_process_node(state: QueryState) -> QueryState:
         response = llm.invoke(messages)
         final_answer = response.content
         
-        print(f"✅ Post-processing successful\n")
-        
+        Logging.logDebug(f"Post-processing output: {final_answer}")
+
+        # Update conversation history
+        history = state.get("conversation_history", [])
+        updated_history = history + [
+            HumanMessage(content=original_query),
+            AIMessage(content=final_answer)
+        ]
         return {
             **state,
-            "final_answer": final_answer
+            "final_answer": final_answer,
+            "conversation_history": updated_history
         }
         
     except Exception as e:
-        error_msg = f"Error in post-processing: {str(e)}"
-        print(error_msg)
+        Logging.logError(str(e))
         
         # Fallback to raw output
         fallback = state.get("sql_result") or state.get("rag_result") or "No results available"
+
+        # Still update history even on error
+        history = state.get("conversation_history", [])
+        updated_history = history + [
+            HumanMessage(content=original_query),
+            AIMessage(content=fallback)
+        ]
+        
         return {
             **state,
             "final_answer": fallback,
-            "error": error_msg
+            "conversation_history": updated_history,
+            "error": str(e)
         }
 
 
@@ -224,116 +268,143 @@ def route_query(state: QueryState) -> Literal["text2sql", "rag"]:
 
 
 def create_query_graph() -> StateGraph:
-    workflow = StateGraph(QueryState)
-    workflow.add_node("router", router_node)
-    workflow.add_node("text2sql", text2sql_node)
-    workflow.add_node("rag", rag_node)
-    workflow.add_node("post_processing", post_process_node)
-    workflow.set_entry_point("router")
-    workflow.add_conditional_edges(
-        "router",
-        route_query,
-        {
-            "text2sql": "text2sql",
-            "rag": "rag"
-        }
-    )
-    workflow.add_edge("text2sql", "post_processing")
-    workflow.add_edge("rag", "post_processing")
-    workflow.add_edge("post_processing", END)
-    return workflow.compile()
+    try:
+        Logging.logInfo("Creating the LangGraph")
+
+        workflow = StateGraph(QueryState)
+        workflow.add_node("preprocessing", preprocessing_node)
+        workflow.add_node("router", router_node)
+        workflow.add_node("text2sql", text2sql_node)
+        workflow.add_node("rag", rag_node)
+        workflow.add_node("post_processing", post_process_node)
+        workflow.set_entry_point("preprocessing")
+        workflow.add_edge("preprocessing", "router")
+        workflow.add_conditional_edges(
+            "router",
+            route_query,
+            {
+                "text2sql": "text2sql",
+                "rag": "rag"
+            }
+        )
+        workflow.add_edge("text2sql", "post_processing")
+        workflow.add_edge("rag", "post_processing")
+        workflow.add_edge("post_processing", END)
+        memory = MemorySaver()
+        return workflow.compile(checkpointer=memory)
+    except Exception as e:
+        Logging.logError(str(e))
+        raise e
 
 
 class ProdLensQueryEngine:
-    """
-    Query engine using LangGraph for routing between Text2SQL and RAG.
-    """
-    
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the query engine with compiled graph."""
         self.graph = create_query_graph()
+        self.thread_id = "default_conversation"
     
-    def query(self, user_query: str) -> dict:
-        """
-        Execute a query through the graph.
-        
-        Args:
-            user_query: Natural language query from user
-            
-        Returns:
-            Final state with results
-        """
-        print("=" * 70)
-        print(f"Processing Query: '{user_query}'")
-        print("=" * 70 + "\n")
-        
-        # Initialize state
-        initial_state = {
-            "query": user_query,
-            "route": "",
-            "reasoning": "",
-            "sql_result": "",
-            "rag_result": "",
-            "final_answer": "",
-            "error": ""
-        }
-        
-        # Execute graph
-        final_state = self.graph.invoke(initial_state)
-        
-        print("=" * 70)
-        print("EXECUTION COMPLETE")
-        print("=" * 70 + "\n")
-        
-        return final_state
-    
-    def visualize(self, output_path: str = "query_graph.png"):
-        """
-        Generate a visualization of the graph.
-        
-        Args:
-            output_path: Path to save the graph image
-        """
+
+    def query(self, user_query: str, thread_id: str = None) -> dict:
         try:
-            from IPython.display import Image, display
+            if thread_id is None:
+                thread_id = self.thread_id
+        
+            Logging.logInfo("=" * 70)
+            Logging.logInfo(f"Processing Query: '{user_query}'")
+            Logging.logDebug(f"Thread ID: {thread_id}")
+            Logging.logInfo("=" * 70 + "\n")
             
-            # Get the graph PNG
-            graph_png = self.graph.get_graph().draw_mermaid_png()
-            
-            # Save to file
-            with open(output_path, "wb") as f:
-                f.write(graph_png)
-            
-            print(f"Graph visualization saved to {output_path}")
-            
-            # Display in notebook if available
+            config = {"configurable": {"thread_id": thread_id}}
+
+            # Retrieve previous conversation history from checkpointer
             try:
-                display(Image(graph_png))
+                previous_state = self.graph.get_state(config)
+                previous_history = previous_state.values.get("conversation_history", [])
             except:
-                pass
-                
+                previous_history = []
+
+            # Initialize state
+            initial_state = {
+                "query": user_query,
+                "conversation_history": previous_history,
+                "standalone_query": "",
+                "route": "",
+                "reasoning": "",
+                "sql_result": "",
+                "rag_result": "",
+                "final_answer": "",
+                "error": ""
+            }
+            
+            final_state = self.graph.invoke(initial_state, config)
+            
+            Logging.logDebug("=" * 70)
+            Logging.logDebug("EXECUTION COMPLETE")
+            Logging.logDebug("=" * 70 + "\n")
+            
+            return final_state
         except Exception as e:
-            print(f"Could not generate visualization: {e}")
+                Logging.logError(str(e))
+                raise e
+
+
+    def get_conversation_history(self, thread_id: str = None) -> List[BaseMessage]:
+        try:
+            if thread_id is None:
+                thread_id = self.thread_id
+            
+            config = {"configurable": {"thread_id": thread_id}}
+            state = self.graph.get_state(config)
+            
+            return state.values.get("conversation_history", [])
+        except Exception as e:
+            Logging.logError(str(e))
+            raise e
+
+
+    def clear_history(self, thread_id: str = None):
+        if thread_id is None:
+            thread_id = self.thread_id
+        
+        Logging.logInfo(f"Cleared conversation history for thread: {thread_id}")
+
+
+    def new_conversation(self, thread_id: str = None) -> str:
+        import uuid
+        if thread_id is None:
+            thread_id = str(uuid.uuid4())
+        
+        self.thread_id = thread_id
+        Logging.logInfo(f"Started new conversation with thread ID: {thread_id}")
+        return thread_id
+
+
+    def visualize(self, output_path: str = "query_graph.png", save: bool = False):
+        try:
+            graph_png = self.graph.get_graph().draw_mermaid_png()
+            if save:
+                with open(output_path, "wb") as f:
+                    f.write(graph_png)
+            
+                Logging.logDebug(f"Graph visualization saved to {output_path}")                
+        except Exception as e:
+            Logging.logError(str(e))
+            raise e
 
 
 if __name__ == "__main__":
     engine = ProdLensQueryEngine()
-    
-    # Test queries
-    test_queries = [
-        # "What kind of monitors should buy for gaming purposes?"
-        "Show me some monitors with high refresh rate for gaming purposes",
-    ]
 
-    # Execute queries
-    for query in test_queries:
-        result = engine.query(query)
-        
-        print(f"Results:")
-        print(f"  Route taken: {result['route']}")
-        print(f"  Reasoning: {result['reasoning']}")
-        print(f"  Answer: {result['final_answer']}...")
-        print("\n" + "=" * 70 + "\n")
+    result = engine.query("What kind of monitors should buy for gaming purposes?")
+    print(f"Answer:\n{result['final_answer']}")
+    print(f"Standalone Query: {result['standalone_query']}\n")
+
+    result = engine.query("What about SteelSeries ones?")
+    print(f"Answer:\n{result['final_answer']}\n")
+    print(f"Standalone Query: {result['standalone_query']}\n")
     
-    # Visualize the graph (optional)
+    result = engine.query("Tell me more about it")
+    print(f"Answer:\n{result['final_answer']}\n")
+    print(f"Standalone Query: {result['standalone_query']}\n")
+
     engine.visualize()
