@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from logger import Logging
 from openai import OpenAI
 from typing import List
+from time import time
 import numpy as np
 import chromadb
 import re
@@ -61,11 +62,13 @@ def rag_query(prompt: str, content_type: str = "spec") -> dict:
             model="text-embedding-3-small"
         ).data[0].embedding
 
+        start = time()
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=3,
             where={"type": content_type}
         )
+        Logging.logInfo(f"Time taken to fetch response: {round(time() - start, 2)} seconds.")
         Logging.logDebug(f"RAG Results:\n{results}\n")
         return results
     except Exception as e:
