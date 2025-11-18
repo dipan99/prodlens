@@ -20,6 +20,9 @@ class QueryState(TypedDict):
     standalone_query: str
     route: str
     reasoning: str
+    # NEW: 'reviews' or 'spec'
+    content_type: str  
+    content_reasoning: str
     sql_result: str
     rag_result: str
     final_answer: str
@@ -158,11 +161,59 @@ def text2sql_node(state: QueryState) -> QueryState:
         }
 
 
+def content_type_node(state: QueryState) -> QueryState:
+    """
+    Router that determines whether to query reviews or references.
+    Output is used as metadata filter for ChromaDB.
+    """
+    try:
+        Logging.logInfo("Executing Content Type Router Node")
+        query = state.get("standalone_query", state["query"])
+        
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.1,
+            model_kwargs={"response_format": {"type": "json_object"}}
+        )
+        
+        system_prompt = get_prompt(name="content_router")
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=query)
+        ]
+
+        response = llm.invoke(messages)
+        decision = json.loads(response.content)
+        
+        content_type = decision.get("content_type", "reviews").lower()
+        if content_type not in ["reviews", "spec"]:
+            content_type = "spec"
+        
+        Logging.logDebug(f"Content Type Decision: {content_type.upper()}")
+        Logging.logDebug(f"Reasoning: {decision.get('reasoning', '')}\n")
+        
+        return {
+            **state,
+            "content_type": content_type,
+            "content_reasoning": decision.get("reasoning", "")
+        }
+        
+    except Exception as e:
+        Logging.logError(str(e))
+        return {
+            **state,
+            "content_type": "spec",
+            "content_reasoning": f"Error in content routing: {str(e)}",
+            "error": str(e)
+        }
+    
+
 def rag_node(state: QueryState) -> QueryState:
     try:
         Logging.logInfo("Executing RAG Node")
         query = state.get("standalone_query", state["query"])
-        result = rag_query(query)
+        content_type = state.get("content_type", None)
+        result = rag_query(query, content_type)
         return {
             **state,
             "rag_result": result,
@@ -274,6 +325,7 @@ def create_query_graph() -> StateGraph:
         workflow = StateGraph(QueryState)
         workflow.add_node("preprocessing", preprocessing_node)
         workflow.add_node("router", router_node)
+        workflow.add_node("content_router", content_type_node)
         workflow.add_node("text2sql", text2sql_node)
         workflow.add_node("rag", rag_node)
         workflow.add_node("post_processing", post_process_node)
@@ -284,9 +336,10 @@ def create_query_graph() -> StateGraph:
             route_query,
             {
                 "text2sql": "text2sql",
-                "rag": "rag"
+                "rag": "content_router"
             }
         )
+        workflow.add_edge("content_router", "rag")
         workflow.add_edge("text2sql", "post_processing")
         workflow.add_edge("rag", "post_processing")
         workflow.add_edge("post_processing", END)
@@ -330,6 +383,8 @@ class ProdLensQueryEngine:
                 "standalone_query": "",
                 "route": "",
                 "reasoning": "",
+                "content_type": "",
+                "content_reasoning": "",
                 "sql_result": "",
                 "rag_result": "",
                 "final_answer": "",
