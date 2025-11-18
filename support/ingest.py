@@ -2,7 +2,7 @@ from psycopg2.extras import RealDictCursor
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from datetime import datetime
-from logger import Logging
+from .logger import Logging
 import pandas as pd
 import numpy as np
 import psycopg2
