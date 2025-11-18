@@ -53,7 +53,7 @@ def get_embeddings(texts: List[str], model="text-embedding-3-small") -> List[np.
         raise e 
 
 
-def rag_query(prompt: str) -> dict:
+def rag_query(prompt: str, content_type: str = "spec") -> dict:
     try:
         Logging.logDebug(f"Retrieving RAG context for the prompt: {prompt}")
         query_embedding = client.embeddings.create(
@@ -63,7 +63,8 @@ def rag_query(prompt: str) -> dict:
 
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=3
+            n_results=3,
+            where={"type": content_type}
         )
         Logging.logDebug(f"RAG Results:\n{results}\n")
         return results
@@ -74,4 +75,4 @@ def rag_query(prompt: str) -> dict:
 
 if __name__ == "__main__":
     print(text_to_sql("Suggest me some monitors with high refresh rates for gaming."))
-    print(rag_query("What is RGB in Monitors"))
+    print(rag_query("What is RGB in Monitors", "reviews"))
