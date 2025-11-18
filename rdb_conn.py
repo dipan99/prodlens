@@ -2,6 +2,7 @@ from logger import Logging
 import psycopg2
 import os
 from dotenv import load_dotenv
+from time import time
 
 Logging.setLevel()
 load_dotenv()
@@ -29,7 +30,9 @@ def sql_query(sql: str) -> str:
         Logging.logDebug(f"Connected to: {version[0]}")
         
         # List tables
+        start = time()
         cursor.execute(sql)
+        Logging.logInfo(f"Time taken to fetch response: {round(time() - start, 2)} seconds.")
         tables = cursor.fetchall()
 
         cursor.close()
