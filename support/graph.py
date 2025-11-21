@@ -2,13 +2,14 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Literal, List
-from .nodes import text_to_sql, rag_query
+from nodes import text_to_sql, rag_query
 from langchain_openai import ChatOpenAI
-from .rdb_conn import sql_query
+from rdb_conn import sql_query
 from dotenv import load_dotenv
-from .logger import Logging
+from logger import Logging
 import json
 import os
+import re
 
 load_dotenv()
 Logging.setLevel()
@@ -23,6 +24,9 @@ class QueryState(TypedDict):
     # NEW: 'reviews' or 'spec'
     content_type: str  
     content_reasoning: str
+    product_id: str  # NEW: stores the resolved product_id
+    product_id_source: str  # NEW: 'memory' or 'sql'
+    sql: str
     sql_result: str
     rag_result: str
     final_answer: str
@@ -148,7 +152,8 @@ def text2sql_node(state: QueryState) -> QueryState:
         result = sql_query(sql)
         return {
             **state,
-            "sql_result": sql,
+            "sql": sql,
+            "sql_result": result,
             "final_answer": result
         }
     except Exception as e:
@@ -189,7 +194,7 @@ def content_type_node(state: QueryState) -> QueryState:
         if content_type not in ["reviews", "spec"]:
             content_type = "spec"
         
-        Logging.logDebug(f"Content Type Decision: {content_type.upper()}")
+        Logging.logInfo(f"Content Type Decision: {content_type.upper()}")
         Logging.logDebug(f"Reasoning: {decision.get('reasoning', '')}\n")
         
         return {
@@ -206,14 +211,114 @@ def content_type_node(state: QueryState) -> QueryState:
             "content_reasoning": f"Error in content routing: {str(e)}",
             "error": str(e)
         }
-    
+
+
+def product_id_resolver_node(state: QueryState) -> QueryState:
+    """
+    NEW NODE: Resolves product_id either from conversation history or via text2sql.
+    Only executes when content_type is 'reviews'.
+    """
+    try:
+        Logging.logInfo("Executing Product ID Resolver Node")
+        query = state.get("standalone_query", state["query"])
+        history = state.get("conversation_history", [])
+        
+        # First, try to extract product_id from last 2 messages (4 messages total - 2 exchanges)
+        product_id = None
+        if history and len(history) >= 2:
+            recent_messages = history[-4:]  # Last 2 exchanges
+            
+            llm = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.1,
+                model_kwargs={"response_format": {"type": "json_object"}}
+            )
+            
+            # Format recent conversation
+            recent_text = ""
+            for msg in recent_messages:
+                role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+                recent_text += f"{role}: {msg.content}\n"
+            
+            system_prompt = get_prompt("find_product")
+            user_prompt = f"""Recent Conversation:
+            {recent_text}
+
+            Current Query: {query}
+
+            Extract the product_id if it exists in the conversation.
+            The product_id is a pure integer not some alphanumeric name.
+            """
+
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+            
+            response = llm.invoke(messages)
+            decision = json.loads(response.content)
+            
+            product_id = decision.get("product_id")
+            confidence = decision.get("confidence", "low")
+            
+            Logging.logDebug(f"Memory extraction - Product ID: {product_id}, Confidence: {confidence}")
+            Logging.logDebug(f"Reasoning: {decision.get('reasoning', '')}\n")
+        
+        # If product_id found in memory with high confidence, use it
+        if product_id and confidence == "high":
+            Logging.logInfo(f"Product ID resolved from memory: {product_id}")
+            return {
+                **state,
+                "product_id": str(product_id),
+                "product_id_source": "memory"
+            }
+        
+        # Otherwise, use text2sql to fetch product_id
+        Logging.logInfo("Product ID not found in memory, using Text2SQL")
+        
+        # Generate SQL query to fetch product_id
+        sql_prompt = get_prompt("fetch_product").format(query=query)
+        result = sql_query(text_to_sql(sql_prompt))
+        
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.1,
+        )
+
+        messages = [
+            SystemMessage(content="Fetch the product_id from the fetched table and return it. Just the product_id"),
+            HumanMessage(content=f"{result}")
+        ]
+        response = llm.invoke(messages)
+        return {
+            **state,
+            "product_id": int(response.content),
+            "product_id_source": "sql",
+            "sql_result": result
+        }
+        
+    except Exception as e:
+        Logging.logError(f"Error in product_id_resolver_node: {str(e)}")
+        return {
+            **state,
+            "product_id": "",
+            "product_id_source": "error",
+            "error": str(e)
+        }
+
 
 def rag_node(state: QueryState) -> QueryState:
     try:
         Logging.logInfo("Executing RAG Node")
         query = state.get("standalone_query", state["query"])
         content_type = state.get("content_type", None)
-        result = rag_query(query, content_type)
+        product_id = state.get("product_id", None)
+
+        if content_type == "reviews" and product_id:
+            Logging.logInfo(f"Performing RAG with reviews filter for product_id: {product_id}")
+
+        # Logging.logInfo(f"Query: {query}\nContent Type: {content_type}\nProduct ID: {product_id}")
+        result = rag_query(query, content_type, product_id)
         return {
             **state,
             "rag_result": result,
@@ -244,11 +349,12 @@ def post_process_node(state: QueryState) -> QueryState:
         if route == "text2sql":
             raw_output = state.get("final_answer", "")
             sql_result = state.get("sql_result", "")
+            sql = state.get("sql", "")
             system_prompt = get_prompt(name="postprocess_sql")
 
             user_prompt = f"""
             Original Query: {standalone_query}
-            Query Used: {sql_result}
+            Query Used: {sql}
             Database Results:
             {raw_output}
 
@@ -318,6 +424,19 @@ def route_query(state: QueryState) -> Literal["text2sql", "rag"]:
     return state["route"]
 
 
+def route_content_type(state: QueryState) -> Literal["product_id_resolver", "rag"]:
+    """
+    NEW: Conditional edge after content_type_node.
+    If content_type is 'reviews', go to product_id_resolver.
+    Otherwise, go directly to rag.
+    """
+    content_type = state.get("content_type", "spec")
+    if content_type == "reviews":
+        return "product_id_resolver"
+    else:
+        return "rag"
+    
+
 def create_query_graph() -> StateGraph:
     try:
         Logging.logInfo("Creating the LangGraph")
@@ -326,10 +445,13 @@ def create_query_graph() -> StateGraph:
         workflow.add_node("preprocessing", preprocessing_node)
         workflow.add_node("router", router_node)
         workflow.add_node("content_router", content_type_node)
+        workflow.add_node("product_id_resolver", product_id_resolver_node)
         workflow.add_node("text2sql", text2sql_node)
         workflow.add_node("rag", rag_node)
         workflow.add_node("post_processing", post_process_node)
+
         workflow.set_entry_point("preprocessing")
+
         workflow.add_edge("preprocessing", "router")
         workflow.add_conditional_edges(
             "router",
@@ -339,10 +461,20 @@ def create_query_graph() -> StateGraph:
                 "rag": "content_router"
             }
         )
-        workflow.add_edge("content_router", "rag")
+        # NEW: Conditional routing based on content_type
+        workflow.add_conditional_edges(
+            "content_router",
+            route_content_type,
+            {
+                "product_id_resolver": "product_id_resolver",
+                "rag": "rag"
+            }
+        )
+        workflow.add_edge("product_id_resolver", "rag")  # NEW: After resolving product_id, go to RAG        
         workflow.add_edge("text2sql", "post_processing")
         workflow.add_edge("rag", "post_processing")
         workflow.add_edge("post_processing", END)
+
         memory = MemorySaver()
         return workflow.compile(checkpointer=memory)
     except Exception as e:
@@ -385,6 +517,9 @@ class ProdLensQueryEngine:
                 "reasoning": "",
                 "content_type": "",
                 "content_reasoning": "",
+                "product_id": "", 
+                "product_id_source": "", 
+                "sql": "",
                 "sql_result": "",
                 "rag_result": "",
                 "final_answer": "",
@@ -441,7 +576,7 @@ class ProdLensQueryEngine:
                 with open(output_path, "wb") as f:
                     f.write(graph_png)
             
-                Logging.logDebug(f"Graph visualization saved to {output_path}")                
+                Logging.logInfo(f"Graph visualization saved to {output_path}")                
         except Exception as e:
             Logging.logError(str(e))
             raise e
@@ -450,16 +585,20 @@ class ProdLensQueryEngine:
 if __name__ == "__main__":
     engine = ProdLensQueryEngine()
 
-    result = engine.query("What kind of monitors should buy for gaming purposes?")
-    print(f"Answer:\n{result['final_answer']}")
-    print(f"Standalone Query: {result['standalone_query']}\n")
+    # result = engine.query("What kind of monitors should buy for gaming purposes?")
+    # print(f"Answer:\n{result['final_answer']}")
+    # print(f"Standalone Query: {result['standalone_query']}\n")
 
-    result = engine.query("What about SteelSeries ones?")
+    result = engine.query("Suggest me some monitors")
     print(f"Answer:\n{result['final_answer']}\n")
     print(f"Standalone Query: {result['standalone_query']}\n")
     
-    result = engine.query("Tell me more about it")
+    result = engine.query("Tell me about the LG 27GN850-B.")
     print(f"Answer:\n{result['final_answer']}\n")
     print(f"Standalone Query: {result['standalone_query']}\n")
 
-    engine.visualize()
+    result = engine.query("What are opinions of those who bought it?")
+    print(f"Answer:\n{result['final_answer']}\n")
+    print(f"Standalone Query: {result['standalone_query']}\n")
+
+    engine.visualize(save=True)
