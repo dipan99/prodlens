@@ -4,9 +4,9 @@ The system has two capabilities:
 
 1. **TEXT2SQL**: Queries structured product data (specifications, prices, ratings, comparisons)
 - Examples: "Show me monitors under $500", "What's the best gaming mouse?", "Compare keyboards"
-- Use when: Query needs filtering, aggregation, sorting, or comparing specific product attributes
+- Use when: Query needs filtering, aggregation, sorting, general information about the product or comparing specific product attributes
 
-2. **RAG**: Searches unstructured text for definitions and explanations
+2. **RAG**: Searches unstructured text for definitions, explanations, reviews and opinions
 - Examples: "What is response time?", "Why is DPI important?", "Explain refresh rate"
 - Use when: Query asks for definitions, meanings, importance, or explanations of specifications
 

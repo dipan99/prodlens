@@ -1,0 +1,13 @@
+Generate SQL to find the product_id for: {query}
+
+CRITICAL INSTRUCTIONS:
+- There might NOT be a perfect/exact match for the product name in the database
+- Use LIKE with wildcards (%) for fuzzy matching: '%keyword%'
+- Break down the query into key terms (brand, type, features) and use OR conditions
+- Include product_name in SELECT to verify matches
+- Order results by relevance (best matches first) using CASE statements
+- Return top 1 match, not just exact matches
+
+Example pattern:
+WHERE (column LIKE '%term1%' OR column LIKE '%term2%' OR column LIKE '%term3%')
+ORDER BY CASE WHEN best_match THEN 1 ELSE 2 END
