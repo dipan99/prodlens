@@ -82,8 +82,8 @@ Located in `support/graph.py` and `support/nodes.py`.
   - **Hybrid mode** when both structured and unstructured data are required  
 - Uses LLM prompting and routing logic defined in `templates/` 
 
-<div align="center" style="padding: 10px; border: 1px solid black; display: inline-block;">
-  <img src="files/graph.png" width="600" alt="ProdLens Workflow Graph">
+<div align="center" style="display: inline-block;">
+  <img src="files/graph.png" width="250" alt="ProdLens Workflow Graph" style="padding: 10px; border: 1px solid black;">
   <br>
   <em>LangGraph Workflow Graph</em>
 </div>
