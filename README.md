@@ -1,4 +1,5 @@
 # prodlens
+<<<<<<< HEAD
 
 ## Members:
 
@@ -6,3 +7,7 @@
 ### Monte Mahlum
 ### Prashant Rao
 ### Tejeshwini Ramesh Subasri
+=======
+LangGraph workflow graph    
+![ProdLens Screenshot](files/graph.png)
+>>>>>>> agents
