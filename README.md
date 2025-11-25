@@ -36,6 +36,7 @@ pip install -r requirements.txt
 Create a `.env` file (or export environment variables):
 ```ini
 OPENAI_API_KEY=
+PERPLEXITY_KEY=
 CHROMA_API_KEY=
 TENANT_KEY=
 DB_HOST=
