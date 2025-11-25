@@ -80,11 +80,14 @@ Located in `support/graph.py` and `support/nodes.py`.
   - **Text2SQL** for structured retrieval from PostgreSQL  
   - **RAG** using vector search from Chroma  
   - **Hybrid mode** when both structured and unstructured data are required  
-- Uses LLM prompting and routing logic defined in `templates/`  
-![ProdLens Workflow Graph](files/graph.png)
-<p style="text-align:center; color:gray; font-size:0.9em;">
-LangGraph Workflow Graph
+- Uses LLM prompting and routing logic defined in `templates/` 
+
+<p align="center">
+  <img src="files/graph.png" width="250" alt="ProdLens Workflow Graph" style="border: 1px solid black; padding: 8px;"/>
+  <br>
+  <em>LangGraph Workflow Graph</em>
 </p>
+
 ---
 
 ### 2. Relational Database (PostgreSQL)
@@ -98,9 +101,11 @@ Stores structured product information including:
 
 SQL schema file is available in `files/` directory.  
 Database connection utilities live in `support/rdb_conn.py`.  
-![ProdLens Schema](files/schema.png)
-<p style="text-align:center; color:gray; font-size:0.9em;">
-Database Schema
+
+<p align="center">
+  <img src="files/schema.png" width="600" alt="ProdLens Schema" style="border: 1px solid black; padding: 8px;"/>
+  <br>
+  <em>Database Schema</em>
 </p>
 
 ---
@@ -151,11 +156,13 @@ Features:
   - Sentiment trends  
   - Feature-driven review insights  
 - Live examples and visualizations  
-- The Streamlit UI:  
-![ProdLens Streamlit UI](files/streamlit_UI.png)
-<p style="text-align:center; color:gray; font-size:0.9em;">
-Streamlit UI
+
+<p align="center">
+  <img src="files/streamlit_UI.png" width="600" alt="ProdLens Streamlit UI" style="border: 1px solid black; padding: 8px;"/>
+  <br>
+  <em>Streamlit UI</em>
 </p>
+
 ---
 
 ### 🔹 6. Shared Helpers (`support/`)
@@ -181,7 +188,3 @@ Includes:
 - Error-handling templates  
 
 These ensure consistent and predictable LLM behavior.
-
----
-
-
