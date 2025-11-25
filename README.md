@@ -102,11 +102,11 @@ Stores structured product information including:
 SQL schema file is available in `files/` directory.  
 Database connection utilities live in `support/rdb_conn.py`.  
 
-<p align="center">
-  <img src="files/schema.png" width="600" alt="ProdLens Schema" style="border: 1px solid black; padding: 8px;"/>
+<div align="center" style="padding: 10px; border: 1px solid black; display: inline-block;">
+  <img src="files/schema.png" width="600" alt="ProdLens Schema">
   <br>
   <em>Database Schema</em>
-</p>
+</div>
 
 ---
 
@@ -157,11 +157,11 @@ Features:
   - Feature-driven review insights  
 - Live examples and visualizations  
 
-<p align="center">
-  <img src="files/streamlit_UI.png" width="600" alt="ProdLens Streamlit UI" style="border: 1px solid black; padding: 8px;"/>
+<div align="center" style="padding: 10px; border: 1px solid black; display: inline-block;">
+  <img src="files/streamlit_UI.png" width="600" alt="ProdLens Streamlit UI">
   <br>
   <em>Streamlit UI</em>
-</p>
+</div>
 
 ---
 
