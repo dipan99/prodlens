@@ -81,9 +81,10 @@ Located in `support/graph.py` and `support/nodes.py`.
   - **RAG** using vector search from Chroma  
   - **Hybrid mode** when both structured and unstructured data are required  
 - Uses LLM prompting and routing logic defined in `templates/`  
-- The LangGraph workflow graph is as follows:  
 ![ProdLens Workflow Graph](files/graph.png)
-
+<p style="text-align:center; color:gray; font-size:0.9em;">
+LangGraph Workflow Graph
+</p>
 ---
 
 ### 2. Relational Database (PostgreSQL)
@@ -98,7 +99,9 @@ Stores structured product information including:
 SQL schema file is available in `files/` directory.  
 Database connection utilities live in `support/rdb_conn.py`.  
 ![ProdLens Schema](files/schema.png)
-
+<p style="text-align:center; color:gray; font-size:0.9em;">
+Database Schema
+</p>
 
 ---
 
@@ -150,7 +153,9 @@ Features:
 - Live examples and visualizations  
 - The Streamlit UI:  
 ![ProdLens Streamlit UI](files/streamlit_UI.png)
-
+<p style="text-align:center; color:gray; font-size:0.9em;">
+Streamlit UI
+</p>
 ---
 
 ### 🔹 6. Shared Helpers (`support/`)
