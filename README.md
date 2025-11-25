@@ -1,6 +1,5 @@
 # ProdLens: Intelligent Querying for Electronics Data  
 **Team:** Dipan Bag, Monte Mahlum, Prashant Rao, Tejeshwini Ramesh Subasri  
-**Team Name:** *SELECT \* FROM Winners*
 
 ## Overview
 
