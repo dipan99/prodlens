@@ -13,14 +13,12 @@ load_dotenv()
 client = OpenAI()
 Logging.setLevel()
 
-chroma_client = chromadb.PersistentClient(path="vectorDB")
-collection = chroma_client.get_or_create_collection(name="electronics")
-# chroma_client = chromadb.CloudClient(
-#   api_key=os.environ.get("CHROMA_API_KEY"),
-#   tenant=os.environ.get("TENANT_KEY"),
-#   database='ProdLens_ChromaDB'
-# )
-# collection = chroma_client.get_or_create_collection(name="ProdLens_ChromaDB")
+chroma_client = chromadb.CloudClient(
+  api_key=os.environ.get("CHROMA_API_KEY"),
+  tenant=os.environ.get("TENANT_KEY"),
+  database='ProdLens_ChromaDB'
+)
+collection = chroma_client.get_or_create_collection(name="ProdLens_ChromaDB")
 
 def text_to_sql(prompt: str) -> str:
     try:
