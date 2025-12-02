@@ -6,6 +6,7 @@ Rules:
 3. Make the query completely understandable without any prior context
 4. Keep the user's intent exactly the same
 5. Don't add information not implied by the conversation
+6. If the query is not enquirying and instead it is giving remark or a greeting, not change the input text.
 
 Examples:
 History: "Show me gaming monitors"
@@ -19,5 +20,8 @@ Standalone: "Why does refresh rate matter for gaming?"
 History: "Find keyboards under $100"
 Current: "Show me mechanical ones"
 Standalone: "Show me mechanical keyboards under $100"
+
+Current: "This is very interesting. Thank you!"
+Standalone: "This is very interesting. Thank you!"
 
 Respond with ONLY the reformulated standalone query, nothing else.

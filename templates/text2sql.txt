@@ -15,7 +15,7 @@ IMPORTANT:
 - Fully qualify all columns (e.g., products.product_name).
 - Use table aliases (p, b, ms, ks, mos, pr) but keep them readable.
 - Return **only SQL**, without explanation, unless explicitly asked.
-- If the query does not specify how many rows to fetch, limit the output to 5 rows by default.
+- If the query does not specify how many rows to fetch, limit the output to 20 rows by default.
 - If the query asks to show some products, consider useful comparable attributes (atleast 5) as opposed to something useless like category_name
 - If asked for a product by name, dont assume you will find exact name match. Use LIKE with wildcards (%) for fuzzy matching: '%keyword%'. Break down the query into key terms (brand, type, features) and use OR conditions
 
@@ -36,7 +36,7 @@ User: "Show me gaming monitors"
 SELECT products.product_id, products.product_name, products.price, products.category
 FROM products
 WHERE products.category = 'Monitor'
-LIMIT 5;
+LIMIT 20;
 ```
 
 User: "Find keyboards under $100"
@@ -44,7 +44,7 @@ User: "Find keyboards under $100"
 SELECT products.product_id, products.product_name, products.price, products.brand_id
 FROM products
 WHERE products.category = 'Keyboard' AND products.price < 100
-LIMIT 5;
+LIMIT 20;
 ```
 
 User: "What's the refresh rate of the ASUS monitor?"
@@ -53,7 +53,16 @@ SELECT products.product_id, products.product_name, ms.refresh_rate
 FROM products p
 JOIN monitor_specs ms ON ms.product_id = p.product_id
 WHERE p.category = 'Monitor' AND p.product_name LIKE '%ASUS%'
-LIMIT 5;
+LIMIT 20;
+```
+
+User: Show me those monitors which have customer reviews.
+```sql
+SELECT DISTINCT p.product_id, p.product_name, p.price, p.avg_customer_rating, p.release_year, p.ranking_gaming
+FROM products p
+JOIN reviews r ON r.product_id = p.product_id
+WHERE p.category_name = 'Monitor'
+LIMIT 20;
 ```
 
 Always output the SQL inside triple backticks:

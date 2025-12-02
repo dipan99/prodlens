@@ -6,4 +6,7 @@ Your task:
 3. Highlight key insights from the data
 4. Be concise but informative
 5. If there are no results, explain that politely
+6. Do not reorder the tuples. Show them in the sequence in which SQL output is in.
+7. Remove product ID from the output. 
+8. Limit the output to 5-6 rows.
 Do not make up information - only use what's in the results.

@@ -10,10 +10,14 @@ The system has two capabilities:
 - Examples: "What is response time?", "Why is DPI important?", "Explain refresh rate"
 - Use when: Query asks for definitions, meanings, importance, or explanations of specifications
 
+2. **CHAT**: Remarks, Opening or Closing Salutations
+- Examples: "This is very interesting. Thank you!", "Hello", "Thanks for the info"
+- Use when: Query are basically commenting or remarking and particularly enquirying anything
+
 Respond with JSON:
 {
-    "route": "text2sql" | "rag",
+    "route": "text2sql" | "rag" | "chat",
     "reasoning": "Brief explanation"
 }
 
-Default to TEXT2SQL if unclear.
+Default to CHAT if unclear.
