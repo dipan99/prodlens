@@ -120,9 +120,9 @@ def router_node(state: QueryState) -> QueryState:
         response = llm.invoke(messages)
         decision = json.loads(response.content)
         
-        route = decision.get("route", "text2sql").lower()
-        if route not in ["text2sql", "rag"]:
-            route = "text2sql"
+        route = decision.get("route", "chat").lower()
+        if route not in ["text2sql", "rag", "chat"]:
+            route = "chat"
         
         Logging.logDebug(f"Router Decision: {route.upper()}")
         Logging.logDebug(f"Reasoning: {decision.get('reasoning', '')}\n")
@@ -137,7 +137,7 @@ def router_node(state: QueryState) -> QueryState:
         Logging.logError(str(e))
         return {
             **state,
-            "route": "text2sql",
+            "route": "chat",
             "reasoning": f"Error in routing: {str(e)}",
             "error": str(e)
         }
@@ -221,32 +221,43 @@ def product_id_resolver_node(state: QueryState) -> QueryState:
     try:
         Logging.logInfo("Executing Product ID Resolver Node")
         query = state.get("standalone_query", state["query"])
-        history = state.get("conversation_history", [])
+        sql_output = state.get("sql_result", state.get("conversation_history", []))
         
+        # history = state.get("conversation_history", [])
         # First, try to extract product_id from last 2 messages (4 messages total - 2 exchanges)
-        product_id = None
-        if history and len(history) >= 2:
-            recent_messages = history[-4:]  # Last 2 exchanges
+        # if history and len(history) >= 2:
+            # recent_messages = history[-4:]  # Last 2 exchanges
+            # Format recent conversation
+            # recent_text = ""
+            # for msg in recent_messages:
+            #     role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            #     recent_text += f"{role}: {msg.content}\n"
             
+            # system_prompt = get_prompt("find_product")
+            # user_prompt = f"""Recent Conversation:
+            # {recent_text}
+
+            # Current Query: {query}
+
+            # Extract the product_id if it exists in the conversation.
+            # The product_id is a pure integer not some alphanumeric name.
+            # """
+            
+        product_id = None
+        if sql_output:
             llm = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0.1,
                 model_kwargs={"response_format": {"type": "json_object"}}
             )
             
-            # Format recent conversation
-            recent_text = ""
-            for msg in recent_messages:
-                role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-                recent_text += f"{role}: {msg.content}\n"
-            
             system_prompt = get_prompt("find_product")
-            user_prompt = f"""Recent Conversation:
-            {recent_text}
+            user_prompt = f"""Recent SQL Query Output:
+            {sql_output}
 
             Current Query: {query}
 
-            Extract the product_id if it exists in the conversation.
+            Extract the product_id if it exists in the recent SQL output.
             The product_id is a pure integer not some alphanumeric name.
             """
 
@@ -334,6 +345,54 @@ def rag_node(state: QueryState) -> QueryState:
         }
 
 
+def conversation_node(state: QueryState) -> QueryState:
+    """
+    NEW NODE: Handles general conversational interactions like greetings,
+    thank yous, acknowledgments, and other casual remarks.
+    """
+    try:
+        Logging.logInfo("Executing Conversation Node")
+        query = state.get("standalone_query", state["query"])
+        history = state.get("conversation_history", [])
+        
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+        
+        system_prompt = get_prompt(name="conversation")
+        # Include recent conversation context if available
+        context = ""
+        if history and len(history) > 0:
+            recent_messages = history[-4:]
+            for msg in recent_messages:
+                role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+                context += f"{role}: {msg.content}\n"
+            context += f"\nUser: {query}"
+        else:
+            context = f"User: {query}"
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=context)
+        ]
+        
+        response = llm.invoke(messages)
+        final_answer = response.content.strip()
+        
+        Logging.logDebug(f"Conversation response: {final_answer}")
+        
+        return {
+            **state,
+            "final_answer": final_answer
+        }
+        
+    except Exception as e:
+        Logging.logError(str(e))
+        return {
+            **state,
+            "final_answer": "I appreciate your message! How can I help you with product information today?",
+            "error": str(e)
+        }
+
+
 def post_process_node(state: QueryState) -> QueryState:
     try:
         Logging.logInfo("Executing Post-Processing Node")
@@ -347,8 +406,8 @@ def post_process_node(state: QueryState) -> QueryState:
 
         # Prepare context based on route
         if route == "text2sql":
-            raw_output = state.get("final_answer", "")
-            sql_result = state.get("sql_result", "")
+            # raw_output = state.get("final_answer", "")
+            raw_output = state.get("sql_result", "")
             sql = state.get("sql", "")
             system_prompt = get_prompt(name="postprocess_sql")
 
@@ -361,8 +420,8 @@ def post_process_node(state: QueryState) -> QueryState:
             Please provide a natural language response to the user's query based on these results.
             """
 
-        else:
-            raw_output = state.get("final_answer", "")
+        elif route == "rag":
+            raw_output = state.get("rag_result", "")
             system_prompt = get_prompt(name="postprocess_rag")
 
             user_prompt = f"""
@@ -372,6 +431,19 @@ def post_process_node(state: QueryState) -> QueryState:
             {raw_output}
 
             Please provide a clear, natural language explanation to answer the user's query.
+            """
+        
+        else:  # chat
+            raw_output = state.get("final_answer", "")
+            system_prompt = "Respond politely and helpfully to the user's message."
+
+            user_prompt = f"""
+            Original Query: {standalone_query}
+
+            Assistant Response:
+            {raw_output}
+
+            Please ensure the response is clear and helpful.
             """
     
         messages = [
@@ -417,7 +489,7 @@ def post_process_node(state: QueryState) -> QueryState:
         }
 
 
-def route_query(state: QueryState) -> Literal["text2sql", "rag"]:
+def route_query(state: QueryState) -> Literal["text2sql", "rag", "chat"]:
     """
     Conditional edge that determines which node to execute next.
     """
@@ -448,6 +520,7 @@ def create_query_graph() -> StateGraph:
         workflow.add_node("product_id_resolver", product_id_resolver_node)
         workflow.add_node("text2sql", text2sql_node)
         workflow.add_node("rag", rag_node)
+        workflow.add_node("engagement", conversation_node)
         workflow.add_node("post_processing", post_process_node)
 
         workflow.set_entry_point("preprocessing")
@@ -458,10 +531,10 @@ def create_query_graph() -> StateGraph:
             route_query,
             {
                 "text2sql": "text2sql",
-                "rag": "content_router"
+                "rag": "content_router",
+                "chat": "engagement"
             }
         )
-        # NEW: Conditional routing based on content_type
         workflow.add_conditional_edges(
             "content_router",
             route_content_type,
@@ -470,9 +543,10 @@ def create_query_graph() -> StateGraph:
                 "rag": "rag"
             }
         )
-        workflow.add_edge("product_id_resolver", "rag")  # NEW: After resolving product_id, go to RAG        
+        workflow.add_edge("product_id_resolver", "rag")       
         workflow.add_edge("text2sql", "post_processing")
         workflow.add_edge("rag", "post_processing")
+        workflow.add_edge("engagement", "post_processing") # NEW: Small talk to post_processing
         workflow.add_edge("post_processing", END)
 
         memory = MemorySaver()
@@ -598,6 +672,10 @@ if __name__ == "__main__":
     print(f"Standalone Query: {result['standalone_query']}\n")
 
     result = engine.query("What are opinions of those who bought it?")
+    print(f"Answer:\n{result['final_answer']}\n")
+    print(f"Standalone Query: {result['standalone_query']}\n")
+
+    result = engine.query("Thanks, I guess I will buy this one.")
     print(f"Answer:\n{result['final_answer']}\n")
     print(f"Standalone Query: {result['standalone_query']}\n")
 
