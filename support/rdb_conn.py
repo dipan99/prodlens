@@ -1,4 +1,6 @@
-from .logger import Logging
+
+from logger import Logging
+from typing import Tuple, List
 import psycopg2
 import os
 from dotenv import load_dotenv
@@ -16,7 +18,7 @@ db_config = {
     'port': os.getenv('DB_PORT', '5432')
 }
 
-def sql_query(sql: str) -> str:
+def sql_query(sql: str) -> Tuple[List[Tuple], List[str]]:
     try:
         Logging.logDebug(f"Retrieving DB output for the query: {sql}")
 
@@ -33,12 +35,13 @@ def sql_query(sql: str) -> str:
         start = time()
         cursor.execute(sql)
         Logging.logInfo(f"Time taken to fetch response: {round(time() - start, 2)} seconds.")
+        colnames = [desc[0] for desc in cursor.description]
         tables = cursor.fetchall()
 
         cursor.close()
         conn.close()
         Logging.logDebug(f"Retrieved tables:\n{tables}\n")
-        return tables        
+        return tables, colnames     
     except Exception as e:
         Logging.logError(str(e))
         raise e

@@ -149,7 +149,7 @@ def text2sql_node(state: QueryState) -> QueryState:
         query = state.get("standalone_query", state["query"])
 
         sql = text_to_sql(query)
-        result = sql_query(sql)
+        result, _ = sql_query(sql)
         return {
             **state,
             "sql": sql,
@@ -289,7 +289,7 @@ def product_id_resolver_node(state: QueryState) -> QueryState:
         
         # Generate SQL query to fetch product_id
         sql_prompt = get_prompt("fetch_product").format(query=query)
-        result = sql_query(text_to_sql(sql_prompt))
+        result, _ = sql_query(text_to_sql(sql_prompt))
         
         llm = ChatOpenAI(
             model="gpt-4o-mini",
