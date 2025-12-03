@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, AIMessage
-from graph import ProdLensQueryEngine
-from logger import Logging
+from support.graph import ProdLensQueryEngine
+from support.logger import Logging
 import streamlit as st
 import time
 
