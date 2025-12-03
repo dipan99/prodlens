@@ -22,8 +22,18 @@ CREATE TABLE products (
     release_year INTEGER,
     price DECIMAL(10, 2),
     product_link TEXT,
+    avg_customer_rating DECIMAL(3, 2),
+    ranking_general DECIMAL(3, 1),
+    ranking_gaming DECIMAL(3, 1),
+    ranking_office DECIMAL(3, 1),
+    ranking_editing DECIMAL(3, 1),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(product_name, brand_id, category_name);
+    
+    CONSTRAINT chk_customer_rating CHECK (avg_customer_rating >= 0 AND avg_customer_rating <= 5),
+    CONSTRAINT chk_ranking_general CHECK (ranking_general >= 0 AND ranking_general <= 10),
+    CONSTRAINT chk_ranking_gaming CHECK (ranking_gaming >= 0 AND ranking_gaming <= 10),
+    CONSTRAINT chk_ranking_office CHECK (ranking_office >= 0 AND ranking_office <= 10),
+    CONSTRAINT chk_ranking_editing CHECK (ranking_editing >= 0 AND ranking_editing <= 10)
 );
 
 -- Monitor-specific specifications
@@ -46,7 +56,7 @@ CREATE TABLE monitor_specs (
     
     -- Display technology
     pixel_type VARCHAR(20),
-    subpixel_layout VARCHAR(10),
+    subpixel_layout VARCHAR(50),
     backlight VARCHAR(50),
     color_depth_bit INTEGER,
     
@@ -82,7 +92,7 @@ CREATE TABLE monitor_specs (
     native_refresh_rate_hz INTEGER,
     max_refresh_rate_hz INTEGER,
     native_resolution VARCHAR(20),
-    aspect_ratio VARCHAR(10),
+    aspect_ratio VARCHAR(20),
     flicker_free BOOLEAN,
     
     -- Connectivity
@@ -205,6 +215,22 @@ CREATE TABLE keyboard_specs (
     linux_compatibility VARCHAR(30),
     
     UNIQUE(product_id)
+);
+
+-- Customer reviews
+CREATE TABLE reviews (
+    review_id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    user_id INTEGER,
+    rating INTEGER NOT NULL,
+    review_title VARCHAR(255),
+    review_text TEXT,
+    source VARCHAR(100),  -- Added: captures review source (e.g., 'Amazon', 'BestBuy', 'RTINGS')
+    verified_purchase BOOLEAN DEFAULT FALSE,
+    helpful_count INTEGER DEFAULT 0,
+    review_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_review_rating CHECK (rating >= 1 AND rating <= 5)
 );
 
 -- Professional ratings from tech reviewers (e.g., RTINGS)
