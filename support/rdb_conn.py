@@ -1,5 +1,4 @@
-
-from logger import Logging
+from .logger import Logging
 from typing import Tuple, List
 import psycopg2
 import os

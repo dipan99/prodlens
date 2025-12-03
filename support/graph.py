@@ -2,11 +2,11 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, Base
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Literal, List
-from nodes import text_to_sql, rag_query
+from .nodes import text_to_sql, rag_query
 from langchain_openai import ChatOpenAI
-from rdb_conn import sql_query
+from .rdb_conn import sql_query
 from dotenv import load_dotenv
-from logger import Logging
+from .logger import Logging
 import json
 import os
 import re

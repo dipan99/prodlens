@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from logger import Logging
+from .logger import Logging
 from openai import OpenAI
 from typing import List
 from time import time
@@ -23,7 +23,7 @@ collection = chroma_client.get_or_create_collection(name="ProdLens_ChromaDB")
 def text_to_sql(prompt: str) -> str:
     try:
         Logging.logDebug(f"Generating SQL query for the prompt: {prompt}")
-        schema_context = open("schema.sql", "r").read()
+        schema_context = open(os.path.join("files", "schema.sql"), "r").read()
 
         system_prompt = open(os.path.join("templates", "text2sql.txt")).read()
 
